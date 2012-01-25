@@ -1,0 +1,53 @@
+Index: usr.sbin/rtadvd/config.c
+===================================================================
+RCS file: /cvs/src/usr.sbin/rtadvd/config.c,v
+retrieving revision 1.26
+diff -u -r1.26 config.c
+--- usr.sbin/rtadvd/config.c	23 Apr 2008 10:17:50 -0000	1.26
++++ usr.sbin/rtadvd/config.c	25 Jan 2012 03:30:54 -0000
+@@ -320,7 +320,7 @@
+ 				now.tv_sec + pfx->preflifetime;
+ 		}
+ 	}
+-	if (tmp->pfxs == 0)
++	if (tmp->pfxs == 0 && !agetflag("noifprefix"))
+ 		get_prefix(tmp);
+ 
+ 	MAYHAVE(val, "mtu", 0);
+Index: usr.sbin/rtadvd/rtadvd.conf.5
+===================================================================
+RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.conf.5,v
+retrieving revision 1.25
+diff -u -r1.25 rtadvd.conf.5
+--- usr.sbin/rtadvd/rtadvd.conf.5	19 Sep 2010 21:59:23 -0000	1.25
++++ usr.sbin/rtadvd/rtadvd.conf.5	25 Jan 2012 03:30:54 -0000
+@@ -142,7 +142,9 @@
+ These items can be omitted, then
+ .Nm rtadvd
+ will automatically get appropriate prefixes from the kernel's routing table,
+-and advertise the prefixes with the default parameters.
++and advertise the prefixes with the default parameters, unless the
++.Cm noifprefix
++flag is specified.
+ Keywords other than
+ .Cm clockskew
+ can be augmented with a number, like
+@@ -184,6 +186,18 @@
+ .Xr termcap 5
+ file format as well as IPv6 numeric addresses, the field MUST be quoted
+ using double quotes.
++.It Cm \&noifprefix
++(bool) Specifies whether
++.Nm rtadvd
++should gather prefix information from the interface if no
++.Cm addr
++is specified. If no
++.Cm addr
++is given, and
++.Cm noifprefix
++is set,
++.Nm rtadvd
++will send RA packets with no prefix information.
+ .It Cm \&vltime
+ (num) Valid lifetime field
+ .Pq unit: seconds .
