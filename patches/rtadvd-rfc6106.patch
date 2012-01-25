@@ -1,4 +1,3 @@
-? usr.sbin/rtadvd/TODO
 Index: sys/netinet/icmp6.h
 ===================================================================
 RCS file: /cvs/src/sys/netinet/icmp6.h,v
