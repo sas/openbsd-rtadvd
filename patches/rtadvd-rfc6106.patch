@@ -4,7 +4,7 @@ RCS file: /cvs/src/sys/netinet/icmp6.h,v
 retrieving revision 1.33
 diff -u -r1.33 icmp6.h
 --- sys/netinet/icmp6.h	22 Mar 2010 12:23:32 -0000	1.33
-+++ sys/netinet/icmp6.h	25 Jan 2011 01:40:48 -0000
++++ sys/netinet/icmp6.h	26 Jan 2012 13:35:20 -0000
 @@ -282,6 +282,8 @@
  #define ND_OPT_PREFIX_INFORMATION	3
  #define ND_OPT_REDIRECTED_HEADER	4
@@ -43,7 +43,7 @@ RCS file: /cvs/src/usr.sbin/rtadvd/config.c,v
 retrieving revision 1.26
 diff -u -r1.26 config.c
 --- usr.sbin/rtadvd/config.c	23 Apr 2008 10:17:50 -0000	1.26
-+++ usr.sbin/rtadvd/config.c	25 Jan 2011 01:40:56 -0000
++++ usr.sbin/rtadvd/config.c	26 Jan 2012 13:35:22 -0000
 @@ -109,6 +109,8 @@
  		fatal("malloc");
  
@@ -53,7 +53,7 @@ diff -u -r1.26 config.c
  	SLIST_INIT(&tmp->soliciters);
  
  	/* check if we are allowed to forward packets (if not determined) */
-@@ -323,6 +325,96 @@
+@@ -323,6 +325,106 @@
  	if (tmp->pfxs == 0)
  		get_prefix(tmp);
  
@@ -114,24 +114,34 @@ diff -u -r1.26 config.c
 +		addr = agetstr(entbuf, &bp);
 +		if (addr == NULL)
 +			continue;
-+		val = strlen(addr) + 1;
-+		/* align size on a 8 bytes boundary for ndopt creation */
-+		val = (val + 7) & ~7;
 +
-+		dsl = malloc(sizeof(struct dnssl) + val);
++		dsl = malloc(sizeof(struct dnssl));
 +		if (dsl == NULL)
 +			fatal("malloc");
 +
-+		dsl->slsize = val;
++		TAILQ_INIT(&dsl->dnssldoms);
 +
-+		val = 0;
 +		while ((tmpsl = strsep(&addr, ","))) {
-+			val += strlcpy(&dsl->searchlist[val], tmpsl, val - dsl->slsize);
-+			dsl->searchlist[val++] = 0;
++			struct dnssldom *dnsd;
++			ssize_t len;
++
++			len = strlen(tmpsl);
++
++			/* if the domain is not "dot-terminated", add it */
++			if (tmpsl[len - 1] != '.')
++				len += 1;
++
++			dnsd = malloc(sizeof(struct dnssldom) + len + 1);
++			if (dnsd == NULL)
++				fatal("malloc");
++
++			dnsd->length = len;
++			strlcpy(dnsd->domain, tmpsl, len + 1);
++			dnsd->domain[len - 1] = '.';
++			dnsd->domain[len] = '\0';
++
++			TAILQ_INSERT_TAIL(&dsl->dnssldoms, dnsd, entry);
 +		}
-+		/* zero out the end of the buffer */
-+		while (val < dsl->slsize)
-+			dsl->searchlist[val++] = 0;
 +
 +		TAILQ_INSERT_TAIL(&tmp->dnssls, dsl, entry);
 +		tmp->dnsslcnt++;
@@ -150,7 +160,7 @@ diff -u -r1.26 config.c
  	MAYHAVE(val, "mtu", 0);
  	if (val < 0 || val > 0xffffffff) {
  		log_warnx("mtu (%ld) on %s out of range", val, intface);
-@@ -596,7 +688,11 @@
+@@ -596,7 +698,12 @@
  	struct nd_router_advert *ra;
  	struct nd_opt_prefix_info *ndopt_pi;
  	struct nd_opt_mtu *ndopt_mtu;
@@ -159,21 +169,32 @@ diff -u -r1.26 config.c
  	struct prefix *pfx;
 +	struct rdnss *rds;
 +	struct dnssl *dsl;
++	struct dnssldom *dnsd;
  
  	/* calculate total length */
  	packlen = sizeof(struct nd_router_advert);
-@@ -613,6 +709,10 @@
+@@ -613,6 +720,20 @@
  		packlen += sizeof(struct nd_opt_prefix_info) * rainfo->pfxs;
  	if (rainfo->linkmtu)
  		packlen += sizeof(struct nd_opt_mtu);
 +	TAILQ_FOREACH(rds, &rainfo->rdnsss, entry)
 +		packlen += sizeof(struct nd_opt_rdnss) + 16 * rds->servercnt;
-+	TAILQ_FOREACH(dsl, &rainfo->dnssls, entry)
-+		packlen += sizeof(struct nd_opt_dnssl) + dsl->slsize;
++	TAILQ_FOREACH(dsl, &rainfo->dnssls, entry) {
++		size_t domains_size = 0;
++
++		packlen += sizeof(struct nd_opt_dnssl);
++
++		TAILQ_FOREACH(dnsd, &dsl->dnssldoms, entry)
++			domains_size += dnsd->length;
++
++		domains_size = (domains_size + 7) & ~7;
++
++		packlen += domains_size;
++	}
  
  	/* allocate memory for the packet */
  	if ((buf = malloc(packlen)) == NULL)
-@@ -705,6 +805,32 @@
+@@ -705,6 +826,62 @@
  		ndopt_pi->nd_opt_pi_prefix = pfx->prefix;
  
  		buf += sizeof(struct nd_opt_prefix_info);
@@ -193,16 +214,46 @@ diff -u -r1.26 config.c
 +	}
 +
 +	TAILQ_FOREACH(dsl, &rainfo->dnssls, entry) {
++		u_int32_t size;
++		char *curlabel_begin;
++		char *curlabel_end;
++
 +		ndopt_dnssl = (struct nd_opt_dnssl *)buf;
 +		ndopt_dnssl->nd_opt_dnssl_type = ND_OPT_DNSSL;
-+		ndopt_dnssl->nd_opt_dnssl_len = 1 + dsl->slsize / 8;
 +		ndopt_dnssl->nd_opt_dnssl_reserved = 0;
 +		ndopt_dnssl->nd_opt_dnssl_lifetime = htonl(dsl->lifetime);
 +
++		size = 0;
++		TAILQ_FOREACH(dnsd, &dsl->dnssldoms, entry)
++			size += dnsd->length;
++		/* align size on the next 8 byte boundary */
++		size = (size + 7) & ~7;
++		ndopt_dnssl->nd_opt_dnssl_len = 1 + size / 8;
++
 +		buf += sizeof(struct nd_opt_dnssl);
 +
-+		memcpy(buf, dsl->searchlist, dsl->slsize);
-+		buf += dsl->slsize;
++		TAILQ_FOREACH(dnsd, &dsl->dnssldoms, entry) {
++			curlabel_begin = dnsd->domain;
++			while ((curlabel_end = strchr(curlabel_begin, '.')) &&
++			    (curlabel_end - curlabel_begin) > 1)
++			{
++				size_t curlabel_size;
++
++				curlabel_size = curlabel_end - curlabel_begin;
++				*buf = curlabel_size;
++				++buf;
++				strncpy(buf, curlabel_begin, curlabel_size);
++				buf += curlabel_size;
++				curlabel_begin = curlabel_end + 1;
++			}
++
++			/* null-terminate the current domain */
++			*buf++ = '\0';
++		}
++
++		/* zero out the end of the current option */
++		while ((int)buf % 8 != 0)
++			*buf++ = '\0';
  	}
  
  	return;
@@ -212,7 +263,7 @@ RCS file: /cvs/src/usr.sbin/rtadvd/config.h,v
 retrieving revision 1.6
 diff -u -r1.6 config.h
 --- usr.sbin/rtadvd/config.h	18 Jun 2003 02:26:58 -0000	1.6
-+++ usr.sbin/rtadvd/config.h	25 Jan 2011 01:40:56 -0000
++++ usr.sbin/rtadvd/config.h	26 Jan 2012 13:35:22 -0000
 @@ -38,7 +38,9 @@
  
  
@@ -230,17 +281,18 @@ RCS file: /cvs/src/usr.sbin/rtadvd/dump.c,v
 retrieving revision 1.10
 diff -u -r1.10 dump.c
 --- usr.sbin/rtadvd/dump.c	21 Jul 2008 19:14:15 -0000	1.10
-+++ usr.sbin/rtadvd/dump.c	25 Jan 2011 01:40:56 -0000
-@@ -103,6 +103,8 @@
++++ usr.sbin/rtadvd/dump.c	26 Jan 2012 13:35:22 -0000
+@@ -103,6 +103,9 @@
  {
  	struct rainfo *rai;
  	struct prefix *pfx;
 +	struct rdnss *rds;
 +	struct dnssl *dsl;
++	struct dnssldom *dnsd;
  	char prefixbuf[INET6_ADDRSTRLEN];
  	int first;
  	struct timeval now;
-@@ -212,6 +214,36 @@
+@@ -212,6 +215,31 @@
  			free(vltime);
  			free(pltime);
  			free(flags);
@@ -261,18 +313,13 @@ diff -u -r1.10 dump.c
 +		if (!TAILQ_EMPTY(&rai->dnssls))
 +			log_info("  DNS search lists:");
 +		TAILQ_FOREACH(dsl, &rai->dnssls, entry) {
-+			int size = 0;
-+
 +			log_info("    Domains:");
-+			while (size < dsl->slsize)
-+			{
-+				/* ignore the padding nul bytes at the end */
-+				if (dsl->searchlist[size] == 0)
-+					break;
 +
-+				log_info("      %s", &dsl->searchlist[size]);
-+				size += strlen(&dsl->searchlist[size]) + 1;
++			TAILQ_FOREACH(dnsd, &dsl->dnssldoms, entry) {
++				/* XXX: print content of entry */
++				log_info("      %s", dnsd->domain);
 +			}
++
 +			log_info("    Lifetime: %u", dsl->lifetime);
  		}
  	}
@@ -280,10 +327,10 @@ diff -u -r1.10 dump.c
 Index: usr.sbin/rtadvd/rtadvd.c
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.c,v
-retrieving revision 1.38
-diff -u -r1.38 rtadvd.c
---- usr.sbin/rtadvd/rtadvd.c	21 Nov 2008 23:44:04 -0000	1.38
-+++ usr.sbin/rtadvd/rtadvd.c	25 Jan 2011 01:40:56 -0000
+retrieving revision 1.39
+diff -u -r1.39 rtadvd.c
+--- usr.sbin/rtadvd/rtadvd.c	2 Mar 2011 17:30:48 -0000	1.39
++++ usr.sbin/rtadvd/rtadvd.c	26 Jan 2012 13:35:22 -0000
 @@ -114,15 +114,22 @@
  #define nd_opts_mtu		nd_opt_each.mtu
  #define nd_opts_list		nd_opt_each.list
@@ -372,7 +419,7 @@ RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.conf,v
 retrieving revision 1.6
 diff -u -r1.6 rtadvd.conf
 --- usr.sbin/rtadvd/rtadvd.conf	19 Jul 2008 10:35:31 -0000	1.6
-+++ usr.sbin/rtadvd/rtadvd.conf	25 Jan 2011 01:40:56 -0000
++++ usr.sbin/rtadvd/rtadvd.conf	26 Jan 2012 13:35:22 -0000
 @@ -18,4 +18,5 @@
  #   this part by hand, and then invoke rtadvd with the -s option.
   
@@ -386,7 +433,7 @@ RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.conf.5,v
 retrieving revision 1.25
 diff -u -r1.25 rtadvd.conf.5
 --- usr.sbin/rtadvd/rtadvd.conf.5	19 Sep 2010 21:59:23 -0000	1.25
-+++ usr.sbin/rtadvd/rtadvd.conf.5	25 Jan 2011 01:40:56 -0000
++++ usr.sbin/rtadvd/rtadvd.conf.5	26 Jan 2012 13:35:22 -0000
 @@ -216,6 +216,30 @@
  will be set to the interface MTU automatically.
  .El
@@ -443,8 +490,8 @@ RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.h,v
 retrieving revision 1.11
 diff -u -r1.11 rtadvd.h
 --- usr.sbin/rtadvd/rtadvd.h	9 Jun 2008 22:53:24 -0000	1.11
-+++ usr.sbin/rtadvd/rtadvd.h	25 Jan 2011 01:40:57 -0000
-@@ -82,6 +82,21 @@
++++ usr.sbin/rtadvd/rtadvd.h	26 Jan 2012 13:35:22 -0000
+@@ -82,6 +82,27 @@
  	struct in6_addr prefix;
  };
  
@@ -456,17 +503,23 @@ diff -u -r1.11 rtadvd.h
 +	struct in6_addr servers[];
 +};
 +
++struct dnssldom {
++	TAILQ_ENTRY(dnssldom) entry;
++
++	u_int32_t length;
++	char domain[];
++};
++
 +struct dnssl {
 +	TAILQ_ENTRY(dnssl) entry;
 +
 +	u_int32_t lifetime;
-+	int slsize;
-+	char searchlist[];
++	TAILQ_HEAD(dnssldomlist, dnssldom) dnssldoms;
 +};
  
  struct soliciter {
  	SLIST_ENTRY(soliciter) entry;
-@@ -118,6 +133,10 @@
+@@ -118,6 +139,10 @@
  	u_int	hoplimit;	/* AdvCurHopLimit */
  	TAILQ_HEAD(prefixlist, prefix) prefixes; /* AdvPrefixList(link head) */
  	int	pfxs;		/* number of prefixes */
