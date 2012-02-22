@@ -2,9 +2,9 @@ Index: sys/netinet/icmp6.h
 ===================================================================
 RCS file: /cvs/src/sys/netinet/icmp6.h,v
 retrieving revision 1.33
-diff -u -r1.33 icmp6.h
+diff -u sys/netinet/icmp6.h
 --- sys/netinet/icmp6.h	22 Mar 2010 12:23:32 -0000	1.33
-+++ sys/netinet/icmp6.h	26 Jan 2012 17:11:40 -0000
++++ sys/netinet/icmp6.h	22 Feb 2012 03:52:17 -0000
 @@ -282,6 +282,8 @@
  #define ND_OPT_PREFIX_INFORMATION	3
  #define ND_OPT_REDIRECTED_HEADER	4
@@ -41,9 +41,9 @@ Index: usr.sbin/rtadvd/config.c
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/config.c,v
 retrieving revision 1.26
-diff -u -r1.26 config.c
+diff -u usr.sbin/rtadvd/config.c
 --- usr.sbin/rtadvd/config.c	23 Apr 2008 10:17:50 -0000	1.26
-+++ usr.sbin/rtadvd/config.c	26 Jan 2012 17:11:42 -0000
++++ usr.sbin/rtadvd/config.c	22 Feb 2012 03:52:25 -0000
 @@ -109,6 +109,8 @@
  		fatal("malloc");
  
@@ -173,7 +173,7 @@ diff -u -r1.26 config.c
  
  	/* calculate total length */
  	packlen = sizeof(struct nd_router_advert);
-@@ -613,6 +720,20 @@
+@@ -613,7 +720,21 @@
  		packlen += sizeof(struct nd_opt_prefix_info) * rainfo->pfxs;
  	if (rainfo->linkmtu)
  		packlen += sizeof(struct nd_opt_mtu);
@@ -181,7 +181,7 @@ diff -u -r1.26 config.c
 +		packlen += sizeof(struct nd_opt_rdnss) + 16 * rds->servercnt;
 +	TAILQ_FOREACH(dsl, &rainfo->dnssls, entry) {
 +		size_t domains_size = 0;
-+
+ 
 +		packlen += sizeof(struct nd_opt_dnssl);
 +
 +		TAILQ_FOREACH(dnsd, &dsl->dnssldoms, entry)
@@ -191,9 +191,10 @@ diff -u -r1.26 config.c
 +
 +		packlen += domains_size;
 +	}
- 
++
  	/* allocate memory for the packet */
  	if ((buf = malloc(packlen)) == NULL)
+ 		fatal("malloc");
 @@ -705,6 +826,62 @@
  		ndopt_pi->nd_opt_pi_prefix = pfx->prefix;
  
@@ -261,9 +262,9 @@ Index: usr.sbin/rtadvd/config.h
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/config.h,v
 retrieving revision 1.6
-diff -u -r1.6 config.h
+diff -u usr.sbin/rtadvd/config.h
 --- usr.sbin/rtadvd/config.h	18 Jun 2003 02:26:58 -0000	1.6
-+++ usr.sbin/rtadvd/config.h	26 Jan 2012 17:11:42 -0000
++++ usr.sbin/rtadvd/config.h	22 Feb 2012 03:52:25 -0000
 @@ -38,7 +38,9 @@
  
  
@@ -279,9 +280,9 @@ Index: usr.sbin/rtadvd/dump.c
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/dump.c,v
 retrieving revision 1.10
-diff -u -r1.10 dump.c
+diff -u usr.sbin/rtadvd/dump.c
 --- usr.sbin/rtadvd/dump.c	21 Jul 2008 19:14:15 -0000	1.10
-+++ usr.sbin/rtadvd/dump.c	26 Jan 2012 17:11:42 -0000
++++ usr.sbin/rtadvd/dump.c	22 Feb 2012 03:52:25 -0000
 @@ -103,6 +103,9 @@
  {
  	struct rainfo *rai;
@@ -326,9 +327,9 @@ Index: usr.sbin/rtadvd/rtadvd.c
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.c,v
 retrieving revision 1.39
-diff -u -r1.39 rtadvd.c
+diff -u usr.sbin/rtadvd/rtadvd.c
 --- usr.sbin/rtadvd/rtadvd.c	2 Mar 2011 17:30:48 -0000	1.39
-+++ usr.sbin/rtadvd/rtadvd.c	26 Jan 2012 17:11:42 -0000
++++ usr.sbin/rtadvd/rtadvd.c	22 Feb 2012 03:52:26 -0000
 @@ -114,15 +114,22 @@
  #define nd_opts_mtu		nd_opt_each.mtu
  #define nd_opts_list		nd_opt_each.list
@@ -415,9 +416,9 @@ Index: usr.sbin/rtadvd/rtadvd.conf
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.conf,v
 retrieving revision 1.6
-diff -u -r1.6 rtadvd.conf
+diff -u usr.sbin/rtadvd/rtadvd.conf
 --- usr.sbin/rtadvd/rtadvd.conf	19 Jul 2008 10:35:31 -0000	1.6
-+++ usr.sbin/rtadvd/rtadvd.conf	26 Jan 2012 17:11:42 -0000
++++ usr.sbin/rtadvd/rtadvd.conf	22 Feb 2012 03:52:26 -0000
 @@ -18,4 +18,5 @@
  #   this part by hand, and then invoke rtadvd with the -s option.
   
@@ -429,9 +430,9 @@ Index: usr.sbin/rtadvd/rtadvd.conf.5
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.conf.5,v
 retrieving revision 1.25
-diff -u -r1.25 rtadvd.conf.5
+diff -u usr.sbin/rtadvd/rtadvd.conf.5
 --- usr.sbin/rtadvd/rtadvd.conf.5	19 Sep 2010 21:59:23 -0000	1.25
-+++ usr.sbin/rtadvd/rtadvd.conf.5	26 Jan 2012 17:11:42 -0000
++++ usr.sbin/rtadvd/rtadvd.conf.5	22 Feb 2012 03:52:26 -0000
 @@ -216,6 +216,30 @@
  will be set to the interface MTU automatically.
  .El
@@ -486,16 +487,16 @@ Index: usr.sbin/rtadvd/rtadvd.h
 ===================================================================
 RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.h,v
 retrieving revision 1.11
-diff -u -r1.11 rtadvd.h
+diff -u usr.sbin/rtadvd/rtadvd.h
 --- usr.sbin/rtadvd/rtadvd.h	9 Jun 2008 22:53:24 -0000	1.11
-+++ usr.sbin/rtadvd/rtadvd.h	26 Jan 2012 17:11:42 -0000
-@@ -82,6 +82,27 @@
++++ usr.sbin/rtadvd/rtadvd.h	22 Feb 2012 03:52:26 -0000
+@@ -82,7 +82,28 @@
  	struct in6_addr prefix;
  };
  
 +struct rdnss {
 +	TAILQ_ENTRY(rdnss) entry;
-+
+ 
 +	u_int32_t lifetime;
 +	int servercnt;
 +	struct in6_addr servers[];
@@ -514,9 +515,10 @@ diff -u -r1.11 rtadvd.h
 +	u_int32_t lifetime;
 +	TAILQ_HEAD(dnssldomlist, dnssldom) dnssldoms;
 +};
- 
++
  struct soliciter {
  	SLIST_ENTRY(soliciter) entry;
+ 	struct sockaddr_in6 addr;
 @@ -118,6 +139,10 @@
  	u_int	hoplimit;	/* AdvCurHopLimit */
  	TAILQ_HEAD(prefixlist, prefix) prefixes; /* AdvPrefixList(link head) */
