@@ -1,6 +1,6 @@
 Index: usr.sbin/rtadvd/config.c
 ===================================================================
-RCS file: /cvs/src/usr.sbin/rtadvd/config.c,v
+RCS file: usr.sbin/rtadvd/config.c,v
 retrieving revision 1.26
 diff -u -r1.26 config.c
 --- usr.sbin/rtadvd/config.c	23 Apr 2008 10:17:50 -0000	1.26
@@ -16,7 +16,7 @@ diff -u -r1.26 config.c
  	MAYHAVE(val, "mtu", 0);
 Index: usr.sbin/rtadvd/rtadvd.conf.5
 ===================================================================
-RCS file: /cvs/src/usr.sbin/rtadvd/rtadvd.conf.5,v
+RCS file: usr.sbin/rtadvd/rtadvd.conf.5,v
 retrieving revision 1.25
 diff -u -r1.25 rtadvd.conf.5
 --- usr.sbin/rtadvd/rtadvd.conf.5	19 Sep 2010 21:59:23 -0000	1.25
