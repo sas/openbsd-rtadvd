@@ -1,4 +1,4 @@
-# patches for OpenBSD's `rtadvd(8)`
+# Patches for OpenBSD's `rtadvd(8)`
 
 This repo contains a set of patches I made for OpenBSD's `rtadvd(8)` daemon.
 
